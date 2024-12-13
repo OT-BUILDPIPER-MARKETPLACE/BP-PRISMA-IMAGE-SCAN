@@ -4,6 +4,8 @@ source /opt/buildpiper/shell-functions/log-functions.sh
 source /opt/buildpiper/shell-functions/str-functions.sh
 source /opt/buildpiper/shell-functions/getDataFile.sh
 source /opt/buildpiper/shell-functions/execute-functions.sh
+source /opt/buildpiper/shell-functions/mi-functions.sh
+source /opt/buildpiper/shell-functions/file-functions.sh
 
 TASK_STATUS=0
 
@@ -12,9 +14,7 @@ logInfoMessage "I'll do processing at [$CODEBASE_LOCATION]"
 sleep  $SLEEP_DURATION
 cd  "${CODEBASE_LOCATION}"
 
-if [ -d "reports" ]; then
-    true
-else
+if [ ! -d "reports" ]; then
     mkdir reports 
 fi
 
@@ -22,10 +22,10 @@ STATUS=0
 if [ -z "$IMAGE_NAME" ] || [ -z "$IMAGE_TAG" ]
 then
     logInfoMessage "Image name/tag is not provided in env variable $IMAGE_NAME checking it in BP data"
-    logInfoMessage "Image Name -> ${IMAGE_NAME}"
-    logInfoMessage "Image Tag -> ${IMAGE_TAG}"
     IMAGE_NAME=`getImageName`
     IMAGE_TAG=`getImageTag`
+    logInfoMessage "Image Name -> ${IMAGE_NAME}"
+    logInfoMessage "Image Tag -> ${IMAGE_TAG}"
 fi
 
 if [ -z "$IMAGE_NAME" ] || [ -z "$IMAGE_TAG" ]
@@ -35,35 +35,51 @@ then
     logInfoMessage "Image Tag -> ${IMAGE_TAG}"
     STATUS=1
 else
-    logInfoMessage "I'll scan image ${IMAGE_NAME}:${IMAGE_TAG}"
+    HYPERLINK="\e]8;;${PRISMA_URL}\e\\${PRISMA_URL}\e]8;;\e\\"
+    logInfoMessage "I'll scan image ${IMAGE_NAME}:${IMAGE_TAG} using Prisma URL -> ${HYPERLINK}"
     sleep  $SLEEP_DURATION
     logInfoMessage "Executing command"
-    # Execute the twistcli command and save the result to a variable
 
-# Check if twistcli is available
-if ! command -v twistcli &> /dev/null; then
-    logErrorMessage "twistcli command not found. Please ensure it is installed and available in the PATH."
-    exit 1
-fi
+    # Check if twistcli is available
+    if ! command -v twistcli &> /dev/null; then
+        logErrorMessage "twistcli command not found. Please ensure it is installed and available in the PATH."
+        exit 1
+    fi
 
-# Determine which authentication method to use
-if [ -n "$PRISMA_TOKEN" ]; then
-    logInfoMessage "Using token-based authentication"
-    SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --token "$PRISMA_TOKEN" "$IMAGE_NAME:$IMAGE_TAG")
-elif [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
-    logInfoMessage "Using username and password for authentication"
-    SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG")
-else
-    logErrorMessage "Authentication credentials not provided. Please provide either PRISMA_TOKEN or both USERNAME and PASSWORD."
-    exit 1
-fi
+    logInfoMessage "twistcli version"
+    twistcli -v
 
-    # SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --token "$PRISMA_TOKEN" "$IMAGE_NAME:$IMAGE_TAG")
-    # SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG")
-    
+    CONNECTION_SUCCESS=false
+
+    # Attempt token-based authentication
+    if [ -n "$PRISMA_TOKEN" ]; then
+        logInfoMessage "Using token-based authentication"
+        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --token "$PRISMA_TOKEN" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
+        if [[ $? -eq 0 ]]; then
+            CONNECTION_SUCCESS=true
+        else
+            logWarningMessage "Token-based authentication failed. Error: $SCAN_RESULT"
+        fi
+    fi
+
+    # Attempt username and password authentication if token fails
+    if [ "$CONNECTION_SUCCESS" = false ] && [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
+        logInfoMessage "Falling back to username and password authentication"
+        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
+        if [[ $? -eq 0 ]]; then
+            CONNECTION_SUCCESS=true
+        else
+            logWarningMessage "Username and password authentication failed. Error: $SCAN_RESULT"
+        fi
+    fi
+
+    # If both methods fail, exit with error
+    if [ "$CONNECTION_SUCCESS" = false ]; then
+        logErrorMessage "Both token-based and username/password authentication failed. Exiting."
+        exit 1
+    fi
+
     logInfoMessage "Scan initiated for image ${IMAGE_NAME}:${IMAGE_TAG}, and pushed data to "$PRISMA_URL" waiting for results..."
-    
-    # Wait for the command to finish
     sleep $SLEEP_DURATION
 
     # Beautify the output when available
@@ -115,17 +131,69 @@ fi
     fi
     echo "================================================="
 fi
+
+logInfoMessage "------------------------Publishing Data on MI------------------------"
+
+    # Generate CSV report
+    echo "total,critical,high,medium,low" > reports/prisma_summary.csv
+    echo "$VULN_TOTAL,$VULN_CRITICAL,$VULN_HIGH,$VULN_MEDIUM,$VULN_LOW" >> reports/prisma_summary.csv
+
+    # Check if the CSV was created
+    if [ ! -f reports/prisma_summary.csv ]; then
+        logErrorMessage "Failed to create prisma_summary.csv"
+        exit 1
+    fi
+
+    logInfoMessage "Summary file created: reports/prisma_summary.csv"
+    cat reports/prisma_summary.csv
+
+    # Push metrics to MI server
+    METRICS=("total" "critical" "high" "medium" "low")
+    VALUES=("$VULN_TOTAL" "$VULN_CRITICAL" "$VULN_HIGH" "$VULN_MEDIUM" "$VULN_LOW")
+
+    # Display the summary
+    cat reports/prisma_summary.csv
+
+    # Encode the report file content
+    export base64EncodedResponse=$(encodeFileContent reports/prisma_summary.csv)
+
+    for i in "${!METRICS[@]}"; do
+        export source_key="${METRICS[$i]}"
+        export report_file_path=null
+        export application=${APPLICATION_NAME}
+        export environment=`getProjectEnv`
+        export service=`getServiceName`                                                                             
+        export organization=$ORGANIZATION
+                                                                                                           
+        generateMIDataJson /opt/buildpiper/data/mi.template prisma.mi
+        if ! sendMIData prisma.mi ${MI_SERVER_ADDRESS}; then
+            logErrorMessage "Failed to push data for ${METRICS[$i]} to MI server"
+            MI_SEND_STATUS=1
+        else
+            logInfoMessage "Successfully sent data for ${METRICS[$i]}"
+            MI_SEND_STATUS=0
+        fi
+    done
+
+    # Log final status
+    if [ "$MI_SEND_STATUS" -eq 0 ]; then
+        logInfoMessage "Prisma scan succeeded, and all metrics were sent to the MI server successfully!"
+    else
+        logErrorMessage "Some metrics failed to send. Please check the MI server or JSON format."
+    fi
+
+
 STATUS=`echo $?`
 if [ $STATUS -eq 0 ]
 then
   logInfoMessage "Congratulations prisma scan succeeded!!!"
   generateOutput ${ACTIVITY_SUB_TASK_CODE} true "Congratulations prisma scan succeeded!!!"
 elif [ $VALIDATION_FAILURE_ACTION == "FAILURE" ]
-  then
+then
     logErrorMessage "Please check prisma scan failed!!!"
     generateOutput ${ACTIVITY_SUB_TASK_CODE} false "Please check prisma scan failed!!!"
     exit 1
-   else
+else
     logWarningMessage "Please check prisma scan failed!!!"
     generateOutput ${ACTIVITY_SUB_TASK_CODE} true "Please check prisma scan failed!!!"
 fi

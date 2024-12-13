@@ -1,7 +1,7 @@
 FROM alpine
 
 RUN apk add --no-cache --upgrade bash grep && \
-    apk add gettext libintl curl jq
+    apk add gettext libintl curl jq coreutils
 
 COPY twistcli /usr/local/bin/
 COPY build.sh .
@@ -15,6 +15,7 @@ ENV USERNAME ""
 ENV PASSWORD ""
 
 ADD BP-BASE-SHELL-STEPS /opt/buildpiper/shell-functions/
+ADD BP-BASE-SHELL-STEPS/data /opt/buildpiper/data
 
 ENV SLEEP_DURATION 5s
 ENV ACTIVITY_SUB_TASK_CODE BP-PRISMA-IMAGE-SCAN
