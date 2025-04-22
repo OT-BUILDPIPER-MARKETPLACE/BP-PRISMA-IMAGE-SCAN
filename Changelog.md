@@ -64,3 +64,14 @@ This addition ensures the script not only performs Prisma scans but also integra
 - Resolved an issue where fallback to BP data (`getImageName`, `getImageTag`) lacked proper logging.  
 - Fixed missing directory check and ensured the `reports` directory is created if absent.  
 - Addressed an issue with CSV report generation to ensure file integrity.  
+
+## [registry.buildpiper.in/prisma-scan:1.0] - 2025-04-22
+
+### Added
+- Updated `twistcli` version to `34.00.137` for enhanced scanning capabilities and compatibility with the latest Prisma features.
+
+### Changed
+- Transitioned from `registry.buildpiper.in/prisma-scan:0.9` to `registry.buildpiper.in/prisma-scan:1.0`.
+
+### Fixed
+- Addressed minor bugs and improved overall stability of the scanning process.
