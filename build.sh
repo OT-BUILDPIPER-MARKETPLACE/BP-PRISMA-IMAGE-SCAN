@@ -48,13 +48,15 @@ else
 
     logInfoMessage "twistcli version"
     twistcli -v
+    MASTER_ENV=`getMasterEnv`
+    APPLICATION_ENV=`getProjectEnv`
 
     CONNECTION_SUCCESS=false
 
     # Attempt token-based authentication
     if [ -n "$PRISMA_TOKEN" ]; then
         logInfoMessage "Using token-based authentication"
-        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --token "$PRISMA_TOKEN" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
+        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$APPLICATION_NAME/$CODEBASE_DIR/$MASTER_ENV/$APPLICATION_ENV/BuildPiper" --token "$PRISMA_TOKEN" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
         if [[ $? -eq 0 ]]; then
             CONNECTION_SUCCESS=true
         else
@@ -65,7 +67,7 @@ else
     # Attempt username and password authentication if token fails
     if [ "$CONNECTION_SUCCESS" = false ] && [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
         logInfoMessage "Falling back to username and password authentication"
-        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$CODEBASE_DIR" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
+        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$APPLICATION_NAME/$CODEBASE_DIR/$MASTER_ENV/$APPLICATION_ENV/BuildPiper" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
         if [[ $? -eq 0 ]]; then
             CONNECTION_SUCCESS=true
         else

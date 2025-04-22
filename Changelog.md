@@ -40,3 +40,27 @@ Here’s the continuation and completion of the script:
 - **Detailed Status Logging:** Enhanced feedback to indicate success or issues during data transmission to MI.
 
 This addition ensures the script not only performs Prisma scans but also integrates with MI for centralized monitoring and reporting.
+
+## [registry.buildpiper.in/prisma-scan:0.9] - 2024-12-20
+
+### Added  
+- Introduced logging statements to enhance script behavior traceability.  
+- Improved authentication handling:  
+  - Added fallback to username/password if token-based authentication fails.  
+- Enhanced scan result parsing to provide a detailed breakdown of vulnerabilities and compliance issues.  
+- Beautified output formatting for improved readability.  
+- Consistent exit codes and error handling across different failure scenarios.  
+- Created CSV reports for scan summaries and added functionality to encode and send reports to the MI server.  
+- Added detailed status logging to indicate success or issues during data transmission to MI.  
+- Integrated temporary file cleanup to ensure a clean workspace post-execution.  
+
+### Changed  
+- Updated the `--job` parameter in Prisma scan command from `$CODEBASE_DIR` to `$APPLICATION_NAME/$CODEBASE_DIR/$MASTER_ENV/$APPLICATION_ENV/BuildPiper`.  
+- Transitioned from `registry.buildpiper.in/prisma-scan:0.8` to `registry.buildpiper.in/prisma-scan:0.9`.  
+- Improved error messages for missing `twistcli` command.  
+- Added checks for missing environment variables (`IMAGE_NAME`, `IMAGE_TAG`, etc.) with more descriptive logs.  
+
+### Fixed  
+- Resolved an issue where fallback to BP data (`getImageName`, `getImageTag`) lacked proper logging.  
+- Fixed missing directory check and ensured the `reports` directory is created if absent.  
+- Addressed an issue with CSV report generation to ensure file integrity.  
