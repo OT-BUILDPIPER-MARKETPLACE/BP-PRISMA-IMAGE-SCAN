@@ -75,3 +75,18 @@ This addition ensures the script not only performs Prisma scans but also integra
 
 ### Fixed
 - Addressed minor bugs and improved overall stability of the scanning process.
+
+## [registry.buildpiper.in/prisma-scan:1.1] - 2025-04-23
+
+### Added
+- Introduced handling for specific error codes (e.g., HTTP 401 Unauthorized) to ensure the script exits only in relevant failure scenarios.
+- Enhanced threshold checks to exit the script if both "Vulnerability threshold check results: FAIL" and "Compliance threshold check results: FAIL" are detected.
+- Added retry mechanism for authentication to handle transient issues during token-based or username/password authentication.
+
+### Changed
+- Improved logging for better traceability of scan results and error handling.
+- Refactored the script to centralize repeated code for better maintainability.
+
+### Fixed
+- Resolved an issue where the script would exit prematurely for non-401 errors during authentication.
+- Fixed potential issues with parsing scan results for vulnerabilities and compliance checks.
