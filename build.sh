@@ -71,13 +71,14 @@ else
         if [[ $? -eq 0 ]]; then
             CONNECTION_SUCCESS=true
         else
-            logWarningMessage "Username and password authentication failed. Error: $SCAN_RESULT"
+            logWarningMessage "Username and password authentication failed."
+            logErrorMessage "$SCAN_RESULT"
         fi
     fi
 
     # If both methods fail, exit with error
     if [ "$CONNECTION_SUCCESS" = false ]; then
-        logErrorMessage "Both token-based and username/password authentication failed. Exiting."
+        logErrorMessage "Both token-based and username/password authentication failed. Exiting..."
         exit 1
     fi
 
