@@ -1,3 +1,9 @@
 old_twistcli
 .vscode
 jsons_dir
+extract_data_csv.py
+extract_data_csv.sh
+extract_data_csv_copy.py
+final_data_csv.py
+local_test_script.sh
+scan_data.json
