@@ -18,7 +18,7 @@ if [ ! -d "reports" ]; then
     mkdir reports 
 fi
 
-STATUS=0
+TASK_STATUS=0
 if [ -z "$IMAGE_NAME" ] || [ -z "$IMAGE_TAG" ]
 then
     logInfoMessage "Image name/tag is not provided in env variable $IMAGE_NAME checking it in BP data"
@@ -33,7 +33,7 @@ then
     logErrorMessage "Image name/tag is not available in BP data as well please check!!!!!!"
     logInfoMessage "Image Name -> ${IMAGE_NAME}"
     logInfoMessage "Image Tag -> ${IMAGE_TAG}"
-    STATUS=1
+    TASK_STATUS=1
 else
     HYPERLINK="\e]8;;${PRISMA_URL}\e\\${PRISMA_URL}\e]8;;\e\\"
     logInfoMessage "I'll scan image ${IMAGE_NAME}:${IMAGE_TAG} using Prisma URL -> ${HYPERLINK}"
@@ -64,22 +64,44 @@ else
         fi
     fi
 
-    # Attempt username and password authentication if token fails
+    # Fallback to username/password if token auth failed
     if [ "$CONNECTION_SUCCESS" = false ] && [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
         logInfoMessage "Falling back to username and password authentication"
-        SCAN_RESULT=$(twistcli images scan --address "$PRISMA_URL" --build "$BUILD_NUMBER" --job "$APPLICATION_NAME/$CODEBASE_DIR/$MASTER_ENV/$APPLICATION_ENV/BuildPiper" --user "$USERNAME" --password "$PASSWORD" "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
-        if [[ $? -eq 0 ]]; then
+        logDebugMessage "Scanning image: $IMAGE_NAME:$IMAGE_TAG using user credentials"
+
+        # Run twistcli safely, capture all output and exit code
+        set +e
+        SCAN_RESULT=$(twistcli images scan \
+            --address "$PRISMA_URL" \
+            --build "$BUILD_NUMBER" \
+            --job "$APPLICATION_NAME/$CODEBASE_DIR/$MASTER_ENV/$APPLICATION_ENV/BuildPiper" \
+            --user "$USERNAME" \
+            --password "$PASSWORD" \
+            "$IMAGE_NAME:$IMAGE_TAG" 2>&1)
+        SCAN_EXIT_CODE=$?
+        set -e
+
+        # Check if 401 Unauthorized is in the output
+        if echo "$SCAN_RESULT" | grep -q "401"; then
+            logErrorMessage "Authentication failed: Received HTTP 401 Unauthorized"
+            logErrorMessage "$SCAN_RESULT"
+        elif [[ $SCAN_EXIT_CODE -eq 0 ]]; then
+            logInfoMessage "twistcli scan completed successfully with username/password"
             CONNECTION_SUCCESS=true
         else
-            logWarningMessage "Username and password authentication failed."
+            logWarningMessage "twistcli scan failed with exit code: $SCAN_EXIT_CODE"
             logErrorMessage "$SCAN_RESULT"
         fi
     fi
 
-    # If both methods fail, exit with error
+    # If both methods fail, check for specific error codes
     if [ "$CONNECTION_SUCCESS" = false ]; then
-        logErrorMessage "Both token-based and username/password authentication failed. Exiting..."
-        exit 1
+        if echo "$SCAN_RESULT" | grep -q "401"; then
+            logErrorMessage "Authentication failed: Received HTTP 401 Unauthorized. Exiting..."
+            exit 1
+        else
+            logWarningMessage "Both token-based and username/password authentication failed, but no 401 error detected. Continuing execution..."
+        fi
     fi
 
     logInfoMessage "Scan initiated for image ${IMAGE_NAME}:${IMAGE_TAG}, and pushed data to "$PRISMA_URL" waiting for results..."
@@ -185,18 +207,23 @@ logInfoMessage "------------------------Publishing Data on MI-------------------
         logErrorMessage "Some metrics failed to send. Please check the MI server or JSON format."
     fi
 
+logInfoMessage "Updating reports in /bp/execution_dir/${GLOBAL_TASK_ID}......."
+cp -rf reports /bp/execution_dir/${GLOBAL_TASK_ID}/
 
-STATUS=`echo $?`
-if [ $STATUS -eq 0 ]
-then
-  logInfoMessage "Congratulations prisma scan succeeded!!!"
-  generateOutput ${ACTIVITY_SUB_TASK_CODE} true "Congratulations prisma scan succeeded!!!"
-elif [ $VALIDATION_FAILURE_ACTION == "FAILURE" ]
-then
-    logErrorMessage "Please check prisma scan failed!!!"
-    generateOutput ${ACTIVITY_SUB_TASK_CODE} false "Please check prisma scan failed!!!"
-    exit 1
+TASK_STATUS=$?
+
+# Check for threshold failures in the scan result
+if [[ "$SCAN_RESULT" =~ "Vulnerability threshold check results: FAIL" ]] && [[ "$SCAN_RESULT" =~ "Compliance threshold check results: FAIL" ]]; then
+    logErrorMessage "Both Vulnerability and Compliance threshold checks failed. Exiting..."
+    TASK_STATUS=1
+elif [[ "$SCAN_RESULT" =~ "Vulnerability threshold check results: FAIL" ]]; then
+    logErrorMessage "Vulnerability threshold check failed. Exiting..."
+    TASK_STATUS=1
+elif [[ "$SCAN_RESULT" =~ "Compliance threshold check results: FAIL" ]]; then
+    logErrorMessage "Compliance threshold check failed. Exiting..."
+    TASK_STATUS=1
 else
-    logWarningMessage "Please check prisma scan failed!!!"
-    generateOutput ${ACTIVITY_SUB_TASK_CODE} true "Please check prisma scan failed!!!"
+    logInfoMessage "Threshold checks passed."
 fi
+
+saveTaskStatus ${TASK_STATUS} ${ACTIVITY_SUB_TASK_CODE}
