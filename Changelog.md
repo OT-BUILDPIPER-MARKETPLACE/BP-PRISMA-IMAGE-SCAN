@@ -90,3 +90,31 @@ This addition ensures the script not only performs Prisma scans but also integra
 ### Fixed
 - Resolved an issue where the script would exit prematurely for non-401 errors during authentication.
 - Fixed potential issues with parsing scan results for vulnerabilities and compliance checks.
+
+---
+
+## [registry.buildpiper.in/prisma-scan:1.1-nr] - 2025-11-06
+
+### Added
+
+* Introduced a **dedicated non-root `buildpiper` user and group (UID/GID: 65522)** to improve container security and ensure least-privilege execution.
+* Created structured directories for runtime and build operations:
+
+  * `/src/reports`, `/bp/data`, `/bp/execution_dir`, `/bp/workspace`
+  * `/opt/buildpiper/shell-functions`, `/opt/buildpiper/data`, `/opt/python_versions`, `/opt/jdk`, `/opt/maven`, `/app/venv`
+  * `/usr/local/bin`, `/etc/timezone`, `/var/lib/apt/lists`
+* Used `COPY --chown=buildpiper:buildpiper` for all project files (`twistcli`, `build.sh`, `BP-BASE-SHELL-STEPS/`) to ensure correct ownership inside the image.
+* Added `USER buildpiper` directive to enforce execution as the non-root user.
+
+### Changed
+
+* Improved directory setup and ownership management to prevent permission issues during runtime or report generation.
+* Updated Docker build structure to be **Alpine-compliant**, lightweight, and secure.
+* Enhanced compliance with container best practices by eliminating root-level operations.
+
+### Fixed
+
+* Resolved permission-related build and execution errors caused by root-owned directories and files.
+* Fixed access conflicts for writable paths like `/src`, `/bp`, `/opt`, `/app`, and `/tmp` when running in containerized environments.
+
+---
